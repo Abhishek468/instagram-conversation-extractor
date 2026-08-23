@@ -12,6 +12,9 @@ import com.instagram.extractor.storage.JsonMessageIndex;
 import com.instagram.extractor.storage.MessageIndex;
 import com.instagram.extractor.storage.RawResponseStore;
 import com.instagram.extractor.storage.StateStore;
+import com.instagram.extractor.validation.ArchiveValidator;
+
+import java.nio.file.Path;
 
 public class Main {
 
@@ -29,6 +32,61 @@ public class Main {
                     new JavaTimeModule()
             );
 
+            /*
+             * ====================================================
+             * VALIDATION MODE
+             * ====================================================
+             *
+             * Run with:
+             *
+             *     validate
+             *
+             * Validation must remain completely read-only.
+             *
+             * IMPORTANT:
+             * Do NOT create RawResponseStore here because its
+             * constructor creates a new sync directory.
+             */
+
+            if (args.length > 0 &&
+                    "validate".equalsIgnoreCase(args[0])) {
+
+       
+                InstagramResponseParser parser =
+                        new InstagramResponseParser(
+                                objectMapper
+                        );
+
+                Path conversationDirectory =
+                        config.outputDirectory()
+                                .resolve(
+                                        config.conversationId()
+                                );
+
+                ArchiveValidator validator =
+                        new ArchiveValidator(
+                                conversationDirectory,
+                                objectMapper,
+                                parser
+                        );
+
+                ArchiveValidator.ValidationResult
+                        result =
+                        validator.validate();
+
+                if (!result.passed()) {
+                    System.exit(1);
+                }
+
+                return;
+            }
+
+            /*
+             * ====================================================
+             * NORMAL EXTRACTION / SYNC MODE
+             * ====================================================
+             */
+
             GraphQLRequestBuilder requestBuilder =
                     new GraphQLRequestBuilder(
                             config,
@@ -45,6 +103,13 @@ public class Main {
                     new InstagramResponseParser(
                             objectMapper
                     );
+
+            /*
+             * RawResponseStore is intentionally created only
+             * after validation mode has been ruled out.
+             *
+             * Its constructor creates a new sync directory.
+             */
 
             RawResponseStore store =
                     new RawResponseStore(
@@ -67,17 +132,22 @@ public class Main {
 
             /*
              * ====================================================
-             * FIRST RUN vs SUBSEQUENT RUN
+             * FIRST RUN / SUBSEQUENT RUN
              * ====================================================
              *
-             * No state.json:
+             * First run:
              *
-             *     Build the initial archive.
+             *     no state.json
+             *          ↓
+             *     full extraction
              *
-             * Existing state.json:
+             * Subsequent run:
              *
-             *     Incrementally synchronize the archive.
+             *     state.json exists
+             *          ↓
+             *     incremental sync
              */
+
             if (!stateStore.exists()) {
 
                 System.out.println();
