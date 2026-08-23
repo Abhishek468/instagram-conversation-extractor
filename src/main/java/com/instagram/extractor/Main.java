@@ -8,6 +8,7 @@ import com.instagram.extractor.instagram.GraphQLRequestBuilder;
 import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.RawResponseStore;
+import com.instagram.extractor.storage.StateStore;
 
 public class Main {
 
@@ -49,13 +50,20 @@ public class Main {
                             config.conversationId(),
                             objectMapper
                     );
+          StateStore stateStore =
+                new StateStore(
+                store.getConversationDirectory(),
+                objectMapper
+                );
             ConversationExtractor extractor =
                     new ConversationExtractor(
                             config,
                             client,
                             parser,
-                            store
+                            store,
+                        stateStore
                     );
+              
 
             extractor.extract();
 

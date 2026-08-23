@@ -13,7 +13,7 @@ config/instagram.properties
 
 # Extracted conversation data
 data/
-
+.vscode/
 # Logs
 *.log
 logs/

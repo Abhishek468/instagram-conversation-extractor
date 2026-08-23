@@ -88,6 +88,10 @@ public class RawResponseStore {
     public Path getSyncDirectory() {
         return syncDirectory;
     }
+    
+    public Path getConversationDirectory() {
+    return syncDirectory.getParent();
+}
 
     public Path getManifestFile() {
         return manifestFile;

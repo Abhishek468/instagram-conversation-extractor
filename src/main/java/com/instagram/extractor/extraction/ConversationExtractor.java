@@ -4,7 +4,9 @@ import com.instagram.extractor.config.InstagramConfig;
 import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.ExtractionManifest;
+import com.instagram.extractor.storage.ExtractionState;
 import com.instagram.extractor.storage.RawResponseStore;
+import com.instagram.extractor.storage.StateStore;
 
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -16,20 +18,30 @@ public class ConversationExtractor {
     private final InstagramClient client;
     private final InstagramResponseParser parser;
     private final RawResponseStore store;
+    private final StateStore stateStore;
 
     public ConversationExtractor(
             InstagramConfig config,
             InstagramClient client,
             InstagramResponseParser parser,
-            RawResponseStore store) {
+            RawResponseStore store,
+            StateStore stateStore) {
 
         this.config = config;
         this.client = client;
         this.parser = parser;
         this.store = store;
+        this.stateStore = stateStore;
     }
 
     public void extract() throws Exception {
+        String newestMessageId = null;
+        long newestTimestampMs = 0;
+
+        String oldestMessageId = null;
+        long oldestTimestampMs = Long.MAX_VALUE;
+
+        int totalMessages = 0;
 
         OffsetDateTime startedAt =
                 OffsetDateTime.now(
@@ -93,6 +105,29 @@ public class ConversationExtractor {
                     parsed =
                     parser.parse(rawJson);
 
+       totalMessages += parsed.nodeCount();
+
+if (!parsed.messageIds().isEmpty()) {
+
+    // Page 1 contains the newest messages.
+    if (newestMessageId == null) {
+        newestMessageId =
+                parsed.messageIds().get(0);
+
+        newestTimestampMs =
+                parsed.newestTimestampMs();
+    }
+
+    // Every subsequent page moves further into history.
+    oldestMessageId =
+            parsed.messageIds()
+                    .get(
+                            parsed.messageIds().size() - 1
+                    );
+
+    oldestTimestampMs =
+            parsed.oldestTimestampMs();
+}
             String firstMessageId =
                     first(parsed);
 
@@ -271,6 +306,44 @@ public class ConversationExtractor {
         System.out.println(
                 "========================================"
         );
+        ExtractionState state =
+        new ExtractionState(
+                config.conversationId()
+        );
+
+state.setTotalMessages(totalMessages);
+
+if (newestMessageId != null) {
+
+    state.setNewestMessage(
+            new ExtractionState.MessageBoundary(
+                    newestMessageId,
+                    newestTimestampMs
+            )
+    );
+}
+
+if (oldestMessageId != null) {
+
+    state.setOldestMessage(
+            new ExtractionState.MessageBoundary(
+                    oldestMessageId,
+                    oldestTimestampMs
+            )
+    );
+}
+
+state.setLastSync(
+        new ExtractionState.SyncInfo(
+                store.getSyncDirectory()
+                        .getFileName()
+                        .toString(),
+                manifest.getCompletedAt(),
+                manifest.getStatus()
+        )
+);
+
+stateStore.save(state);
     }
 
     private String first(

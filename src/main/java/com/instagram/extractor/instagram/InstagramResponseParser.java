@@ -41,6 +41,9 @@ public class InstagramResponseParser {
         List<String> messageIds =
                 new ArrayList<>();
 
+        List<Long> timestamps =
+                new ArrayList<>();
+
         if (edges.isArray()) {
 
             for (JsonNode edge : edges) {
@@ -62,6 +65,17 @@ public class InstagramResponseParser {
                 if (!id.isBlank()) {
                     messageIds.add(id);
                 }
+
+                JsonNode timestampNode =
+                        node.get("timestamp_ms");
+
+                if (timestampNode != null
+                        && !timestampNode.isNull()) {
+
+                    timestamps.add(
+                            timestampNode.asLong()
+                    );
+                }
             }
         }
 
@@ -73,11 +87,29 @@ public class InstagramResponseParser {
                 pageInfo.path("has_next_page")
                         .asBoolean(false);
 
+        long oldestTimestampMs =
+                timestamps.isEmpty()
+                        ? 0
+                        : timestamps.stream()
+                                .mapToLong(Long::longValue)
+                                .min()
+                                .orElse(0);
+
+        long newestTimestampMs =
+                timestamps.isEmpty()
+                        ? 0
+                        : timestamps.stream()
+                                .mapToLong(Long::longValue)
+                                .max()
+                                .orElse(0);
+
         return new ParsedResponse(
                 edges.size(),
                 messageIds,
                 endCursor,
-                hasNextPage
+                hasNextPage,
+                oldestTimestampMs,
+                newestTimestampMs
         );
     }
 
@@ -134,7 +166,9 @@ public class InstagramResponseParser {
             int nodeCount,
             List<String> messageIds,
             String endCursor,
-            boolean hasNextPage
+            boolean hasNextPage,
+            long oldestTimestampMs,
+            long newestTimestampMs
     ) {
     }
 }
