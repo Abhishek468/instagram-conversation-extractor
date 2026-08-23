@@ -3,9 +3,12 @@ package com.instagram.extractor.extraction;
 import com.instagram.extractor.config.InstagramConfig;
 import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
+import com.instagram.extractor.storage.ExtractionManifest;
 import com.instagram.extractor.storage.RawResponseStore;
 
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 public class ConversationExtractor {
 
@@ -28,9 +31,26 @@ public class ConversationExtractor {
 
     public void extract() throws Exception {
 
+        OffsetDateTime startedAt =
+                OffsetDateTime.now(
+                        ZoneOffset.systemDefault()
+                );
+
+        ExtractionManifest manifest =
+                new ExtractionManifest(
+                        config.conversationId(),
+                        startedAt,
+                        config.first()
+                );
+
+        store.saveManifest(manifest);
+
         String afterCursor = null;
 
         int page = 1;
+
+        String stopReason =
+                "UNKNOWN";
 
         System.out.println();
         System.out.println(
@@ -59,7 +79,9 @@ public class ConversationExtractor {
             );
 
             String rawJson =
-                    client.fetchPage(afterCursor);
+                    client.fetchPage(
+                            afterCursor
+                    );
 
             Path savedFile =
                     store.save(
@@ -71,6 +93,36 @@ public class ConversationExtractor {
                     parsed =
                     parser.parse(rawJson);
 
+            String firstMessageId =
+                    first(parsed);
+
+            String lastMessageId =
+                    last(parsed);
+
+            manifest.addPage(
+                    new ExtractionManifest.PageMetadata(
+                            page,
+                            savedFile.getFileName()
+                                    .toString(),
+                            parsed.nodeCount(),
+                            firstMessageId,
+                            lastMessageId,
+                            parsed.endCursor(),
+                            parsed.hasNextPage()
+                    )
+            );
+
+            /*
+             * Save manifest after every page.
+             *
+             * If the program crashes after page 3,
+             * the manifest still knows that page 1-3
+             * were successfully persisted.
+             */
+            store.saveManifest(
+                    manifest
+            );
+
             System.out.println(
                     "Nodes: " +
                     parsed.nodeCount()
@@ -78,12 +130,12 @@ public class ConversationExtractor {
 
             System.out.println(
                     "First message ID: " +
-                    first(parsed)
+                    firstMessageId
             );
 
             System.out.println(
                     "Last message ID: " +
-                    last(parsed)
+                    lastMessageId
             );
 
             System.out.println(
@@ -101,23 +153,40 @@ public class ConversationExtractor {
                     savedFile
             );
 
+            /*
+             * No more data.
+             */
             if (!parsed.hasNextPage()) {
 
-                System.out.println();
-                System.out.println(
-                        "Instagram reports no more pages."
-                );
+                stopReason =
+                        "NO_MORE_PAGES";
 
                 break;
             }
 
+            /*
+             * Instagram says there is another page,
+             * but didn't provide a cursor.
+             */
             if (parsed.endCursor() == null ||
                     parsed.endCursor().isBlank()) {
 
-                throw new IllegalStateException(
-                        "has_next_page=true but " +
-                        "end_cursor is empty"
-                );
+                stopReason =
+                        "MISSING_END_CURSOR";
+
+                break;
+            }
+
+            /*
+             * We reached our configured diagnostic
+             * limit.
+             */
+            if (page == config.maxPages()) {
+
+                stopReason =
+                        "MAX_PAGES_REACHED";
+
+                break;
             }
 
             afterCursor =
@@ -126,22 +195,79 @@ public class ConversationExtractor {
             page++;
         }
 
+        manifest.setCompletedAt(
+                OffsetDateTime.now(
+                        ZoneOffset.systemDefault()
+                )
+        );
+
+        manifest.setStopReason(
+                stopReason
+        );
+
+        manifest.setHasMorePages(
+                "MAX_PAGES_REACHED"
+                        .equals(stopReason)
+                        || "UNKNOWN"
+                        .equals(stopReason)
+                        && manifest.isHasMorePages()
+        );
+
+        manifest.setStatus(
+                "MAX_PAGES_REACHED"
+                        .equals(stopReason)
+                        ? "PARTIAL"
+                        : "COMPLETE"
+        );
+
+        store.saveManifest(
+                manifest
+        );
+
         System.out.println();
         System.out.println(
                 "========================================"
         );
+
+        if ("PARTIAL".equals(
+                manifest.getStatus())) {
+
+            System.out.println(
+                    "EXTRACTION STOPPED"
+            );
+
+            System.out.println(
+                    "Reason: " +
+                    manifest.getStopReason()
+            );
+
+            System.out.println(
+                    "More pages available: " +
+                    manifest.isHasMorePages()
+            );
+
+        } else {
+
+            System.out.println(
+                    "EXTRACTION COMPLETE"
+            );
+        }
+
         System.out.println(
-                "EXTRACTION COMPLETE"
+                "Pages downloaded: " +
+                manifest.getPagesDownloaded()
         );
+
         System.out.println(
-                "Pages downloaded: " + (page <= config.maxPages()
-                        ? page
-                        : config.maxPages())
+                "Manifest: " +
+                store.getManifestFile()
         );
+
         System.out.println(
                 "Archive: " +
                 store.getSyncDirectory()
         );
+
         System.out.println(
                 "========================================"
         );
@@ -161,6 +287,8 @@ public class ConversationExtractor {
         return response.messageIds().isEmpty()
                 ? "<none>"
                 : response.messageIds()
-                        .get(response.messageIds().size() - 1);
+                        .get(
+                                response.messageIds().size() - 1
+                        );
     }
 }

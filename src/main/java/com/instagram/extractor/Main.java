@@ -1,6 +1,7 @@
 package com.instagram.extractor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.instagram.extractor.config.InstagramConfig;
 import com.instagram.extractor.extraction.ConversationExtractor;
 import com.instagram.extractor.instagram.GraphQLRequestBuilder;
@@ -20,6 +21,10 @@ public class Main {
             ObjectMapper objectMapper =
                     new ObjectMapper();
 
+            objectMapper.registerModule(
+                    new JavaTimeModule()
+            );
+
             GraphQLRequestBuilder requestBuilder =
                     new GraphQLRequestBuilder(
                             config,
@@ -37,12 +42,13 @@ public class Main {
                             objectMapper
                     );
 
+
             RawResponseStore store =
                     new RawResponseStore(
                             config.outputDirectory(),
-                            config.conversationId()
+                            config.conversationId(),
+                            objectMapper
                     );
-
             ConversationExtractor extractor =
                     new ConversationExtractor(
                             config,
