@@ -1,0 +1,19 @@
+# Maven
+target/
+
+# IDE
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Local configuration / credentials
+config/instagram.properties
+
+# Extracted conversation data
+data/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,32 @@
+instagram.base-url=https://www.instagram.com
+
+# Conversation
+instagram.conversation-id=
+
+# Request configuration
+instagram.first=20
+instagram.doc-id=27502152406082940
+instagram.ig-app-id=1217981644879628
+instagram.friendly-name=IGDMessageListOffMsysQuery
+instagram.fb-api-caller-class=RelayModern
+
+instagram.x-asbd-id=359341
+instagram.user-agent=Mozilla/5.0
+instagram.referer=https://www.instagram.com/direct/
+
+# Session/authentication
+instagram.csrf-token=
+instagram.lsd=
+instagram.fb-dtsg=
+instagram.jazoest=
+
+instagram.datr=
+instagram.ig-did=
+instagram.mid=
+instagram.ds-user-id=
+instagram.sessionid=
+instagram.rur=
+
+# Extraction
+extractor.max-pages=4
+extractor.output-directory=data/conversations
