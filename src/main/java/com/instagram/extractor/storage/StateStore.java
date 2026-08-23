@@ -40,4 +40,14 @@ public class StateStore {
     public Path getStateFile() {
         return stateFile;
     }
+    public boolean exists() {
+    return Files.exists(stateFile);
+}
+
+public ExtractionState load() throws IOException {
+    return objectMapper.readValue(
+            stateFile.toFile(),
+            ExtractionState.class
+    );
+}
 }

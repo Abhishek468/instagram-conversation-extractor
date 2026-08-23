@@ -5,6 +5,7 @@ import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.ExtractionManifest;
 import com.instagram.extractor.storage.ExtractionState;
+import com.instagram.extractor.storage.MessageIndex;
 import com.instagram.extractor.storage.RawResponseStore;
 import com.instagram.extractor.storage.StateStore;
 
@@ -19,22 +20,26 @@ public class ConversationExtractor {
     private final InstagramResponseParser parser;
     private final RawResponseStore store;
     private final StateStore stateStore;
+    private final MessageIndex messageIndex;
 
     public ConversationExtractor(
             InstagramConfig config,
             InstagramClient client,
             InstagramResponseParser parser,
             RawResponseStore store,
-            StateStore stateStore) {
+            StateStore stateStore,
+            MessageIndex messageIndex) {
 
         this.config = config;
         this.client = client;
         this.parser = parser;
         this.store = store;
         this.stateStore = stateStore;
+        this.messageIndex = messageIndex;
     }
 
     public void extract() throws Exception {
+
         String newestMessageId = null;
         long newestTimestampMs = 0;
 
@@ -105,29 +110,59 @@ public class ConversationExtractor {
                     parsed =
                     parser.parse(rawJson);
 
-       totalMessages += parsed.nodeCount();
+            totalMessages += parsed.nodeCount();
 
-if (!parsed.messageIds().isEmpty()) {
+            /*
+             * ====================================================
+             * MESSAGE INDEX
+             * ====================================================
+             *
+             * The raw response has already been persisted above.
+             *
+             * Now extract the message IDs and add them to the
+             * persistent message index.
+             *
+             * The index contains only message IDs, not the
+             * complete message payloads.
+             */
+            for (String messageId : parsed.messageIds()) {
 
-    // Page 1 contains the newest messages.
-    if (newestMessageId == null) {
-        newestMessageId =
-                parsed.messageIds().get(0);
+                messageIndex.add(messageId);
+            }
 
-        newestTimestampMs =
-                parsed.newestTimestampMs();
-    }
+            /*
+             * Persist the index after every successfully processed
+             * page.
+             *
+             * This means that if extraction stops unexpectedly,
+             * the index still contains everything processed before
+             * the failure.
+             */
+            messageIndex.save();
 
-    // Every subsequent page moves further into history.
-    oldestMessageId =
-            parsed.messageIds()
-                    .get(
-                            parsed.messageIds().size() - 1
-                    );
+            if (!parsed.messageIds().isEmpty()) {
 
-    oldestTimestampMs =
-            parsed.oldestTimestampMs();
-}
+                // Page 1 contains the newest messages.
+                if (newestMessageId == null) {
+
+                    newestMessageId =
+                            parsed.messageIds().get(0);
+
+                    newestTimestampMs =
+                            parsed.newestTimestampMs();
+                }
+
+                // Every subsequent page moves further into history.
+                oldestMessageId =
+                        parsed.messageIds()
+                                .get(
+                                        parsed.messageIds().size() - 1
+                                );
+
+                oldestTimestampMs =
+                        parsed.oldestTimestampMs();
+            }
+
             String firstMessageId =
                     first(parsed);
 
@@ -186,6 +221,11 @@ if (!parsed.messageIds().isEmpty()) {
             System.out.println(
                     "Saved: " +
                     savedFile
+            );
+
+            System.out.println(
+                    "Index size: " +
+                    messageIndex.size()
             );
 
             /*
@@ -294,6 +334,11 @@ if (!parsed.messageIds().isEmpty()) {
         );
 
         System.out.println(
+                "Messages indexed: " +
+                messageIndex.size()
+        );
+
+        System.out.println(
                 "Manifest: " +
                 store.getManifestFile()
         );
@@ -306,44 +351,45 @@ if (!parsed.messageIds().isEmpty()) {
         System.out.println(
                 "========================================"
         );
+
         ExtractionState state =
-        new ExtractionState(
-                config.conversationId()
+                new ExtractionState(
+                        config.conversationId()
+                );
+
+        state.setTotalMessages(totalMessages);
+
+        if (newestMessageId != null) {
+
+            state.setNewestMessage(
+                    new ExtractionState.MessageBoundary(
+                            newestMessageId,
+                            newestTimestampMs
+                    )
+            );
+        }
+
+        if (oldestMessageId != null) {
+
+            state.setOldestMessage(
+                    new ExtractionState.MessageBoundary(
+                            oldestMessageId,
+                            oldestTimestampMs
+                    )
+            );
+        }
+
+        state.setLastSync(
+                new ExtractionState.SyncInfo(
+                        store.getSyncDirectory()
+                                .getFileName()
+                                .toString(),
+                        manifest.getCompletedAt(),
+                        manifest.getStatus()
+                )
         );
 
-state.setTotalMessages(totalMessages);
-
-if (newestMessageId != null) {
-
-    state.setNewestMessage(
-            new ExtractionState.MessageBoundary(
-                    newestMessageId,
-                    newestTimestampMs
-            )
-    );
-}
-
-if (oldestMessageId != null) {
-
-    state.setOldestMessage(
-            new ExtractionState.MessageBoundary(
-                    oldestMessageId,
-                    oldestTimestampMs
-            )
-    );
-}
-
-state.setLastSync(
-        new ExtractionState.SyncInfo(
-                store.getSyncDirectory()
-                        .getFileName()
-                        .toString(),
-                manifest.getCompletedAt(),
-                manifest.getStatus()
-        )
-);
-
-stateStore.save(state);
+        stateStore.save(state);
     }
 
     private String first(
