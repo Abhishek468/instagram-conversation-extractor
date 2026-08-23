@@ -44,6 +44,9 @@ public class InstagramResponseParser {
         List<Long> timestamps =
                 new ArrayList<>();
 
+        List<ParsedMessage> messages =
+                new ArrayList<>();
+
         if (edges.isArray()) {
 
             for (JsonNode edge : edges) {
@@ -62,9 +65,7 @@ public class InstagramResponseParser {
                                     .asText("");
                 }
 
-                if (!id.isBlank()) {
-                    messageIds.add(id);
-                }
+                long timestampMs = 0;
 
                 JsonNode timestampNode =
                         node.get("timestamp_ms");
@@ -72,8 +73,22 @@ public class InstagramResponseParser {
                 if (timestampNode != null
                         && !timestampNode.isNull()) {
 
-                    timestamps.add(
-                            timestampNode.asLong()
+                    timestampMs =
+                            timestampNode.asLong();
+
+                    timestamps.add(timestampMs);
+                }
+
+                if (!id.isBlank()) {
+
+                    messageIds.add(id);
+
+                    messages.add(
+                            new ParsedMessage(
+                                    id,
+                                    timestampMs,
+                                    node.deepCopy()
+                            )
                     );
                 }
             }
@@ -106,6 +121,7 @@ public class InstagramResponseParser {
         return new ParsedResponse(
                 edges.size(),
                 messageIds,
+                messages,
                 endCursor,
                 hasNextPage,
                 oldestTimestampMs,
@@ -165,10 +181,18 @@ public class InstagramResponseParser {
     public record ParsedResponse(
             int nodeCount,
             List<String> messageIds,
+            List<ParsedMessage> messages,
             String endCursor,
             boolean hasNextPage,
             long oldestTimestampMs,
             long newestTimestampMs
+    ) {
+    }
+
+    public record ParsedMessage(
+            String id,
+            long timestampMs,
+            JsonNode rawNode
     ) {
     }
 }
