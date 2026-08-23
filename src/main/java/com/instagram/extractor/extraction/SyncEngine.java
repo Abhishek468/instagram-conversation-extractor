@@ -6,6 +6,7 @@ import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.ExtractionManifest;
 import com.instagram.extractor.storage.ExtractionState;
 import com.instagram.extractor.storage.MessageIndex;
+import com.instagram.extractor.storage.MessageLocation;
 import com.instagram.extractor.storage.RawResponseStore;
 import com.instagram.extractor.storage.StateStore;
 
@@ -165,11 +166,32 @@ public class SyncEngine {
             /*
              * Add only genuinely new IDs.
              */
-            for (String messageId : pageNewIds) {
+           String syncId =
+        savedFile
+                .getParent()
+                .getFileName()
+                .toString();
 
-                messageIndex.add(messageId);
-                newMessages++;
-            }
+String pageFileName =
+        savedFile
+                .getFileName()
+                .toString();
+
+MessageLocation location =
+        new MessageLocation(
+                syncId,
+                pageFileName
+        );
+
+for (String messageId : pageNewIds) {
+
+    messageIndex.add(
+            messageId,
+            location
+    );
+
+    newMessages++;
+}
 
             /*
              * Persist the index after processing this page.

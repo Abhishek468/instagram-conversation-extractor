@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,18 +18,21 @@ public class ArchiveMessageReader
         implements ConversationDataStore {
 
     private final Path conversationDirectory;
+
     private final ObjectMapper objectMapper;
+
     private final InstagramResponseParser parser;
+
+    private final MessageIndex messageIndex;
 
     /*
      * Page cache.
      *
-     * Key   = page file
+     * Key   = page path
      * Value = messages contained in that page
      *
-     * LinkedHashMap allows us to implement a simple
-     * bounded LRU cache later without changing the
-     * public API.
+     * This prevents repeatedly parsing the same page
+     * when several messages from the same page are requested.
      */
     private final Map<Path, List<Message>> pageCache =
             new LinkedHashMap<>();
@@ -40,7 +42,8 @@ public class ArchiveMessageReader
     public ArchiveMessageReader(
             Path conversationDirectory,
             ObjectMapper objectMapper,
-            InstagramResponseParser parser) {
+            InstagramResponseParser parser,
+            MessageIndex messageIndex) {
 
         this.conversationDirectory =
                 conversationDirectory;
@@ -50,6 +53,9 @@ public class ArchiveMessageReader
 
         this.parser =
                 parser;
+
+        this.messageIndex =
+                messageIndex;
     }
 
     @Override
@@ -58,6 +64,13 @@ public class ArchiveMessageReader
         List<Message> result =
                 new ArrayList<>();
 
+        /*
+         * We still discover all pages for the full conversation
+         * operation.
+         *
+         * This will be optimized separately when we build
+         * proper conversation pagination.
+         */
         for (Path page : discoverPageFiles()) {
 
             result.addAll(
@@ -65,9 +78,33 @@ public class ArchiveMessageReader
             );
         }
 
-        sortNewestFirst(result);
+        /*
+         * Multiple sync archives can contain the same message.
+         *
+         * Deduplicate by message ID before returning the
+         * logical conversation.
+         */
+        Map<String, Message> uniqueMessages =
+                new LinkedHashMap<>();
 
-        return result;
+        for (Message message : result) {
+
+            uniqueMessages.putIfAbsent(
+                    message.id(),
+                    message
+            );
+        }
+
+        List<Message> logicalMessages =
+                new ArrayList<>(
+                        uniqueMessages.values()
+                );
+
+        sortNewestFirst(
+                logicalMessages
+        );
+
+        return logicalMessages;
     }
 
     @Override
@@ -76,6 +113,7 @@ public class ArchiveMessageReader
             int limit) {
 
         if (offset < 0) {
+
             throw new IllegalArgumentException(
                     "offset cannot be negative"
             );
@@ -99,7 +137,10 @@ public class ArchiveMessageReader
                 );
 
         return List.copyOf(
-                all.subList(offset, end)
+                all.subList(
+                        offset,
+                        end
+                )
         );
     }
 
@@ -107,45 +148,94 @@ public class ArchiveMessageReader
     public Optional<Message> getMessage(
             String messageId) {
 
-        if (messageId == null ||
-                messageId.isBlank()) {
+        if (messageId == null
+                || messageId.isBlank()) {
 
             return Optional.empty();
         }
 
-        for (Path page : discoverPageFiles()) {
+        /*
+         * ========================================================
+         * INDEXED LOOKUP
+         * ========================================================
+         *
+         * Instead of scanning every archive page:
+         *
+         *     message ID
+         *          ↓
+         *     index lookup
+         *          ↓
+         *     exact sync/page
+         *          ↓
+         *     read ONE page
+         */
+        Optional<MessageLocation> locationOptional =
+                messageIndex.getLocation(
+                        messageId
+                );
 
-            for (Message message :
-                    readPage(page)) {
+        if (locationOptional.isEmpty()) {
 
-                if (messageId.equals(
-                        message.id())) {
+            return Optional.empty();
+        }
 
-                    return Optional.of(message);
-                }
+        MessageLocation location =
+                locationOptional.get();
+
+        Path page =
+                conversationDirectory
+                        .resolve(
+                                location.syncId()
+                        )
+                        .resolve(
+                                location.page()
+                        );
+
+        if (!Files.exists(page)) {
+
+            throw new IllegalStateException(
+                    "Indexed page does not exist: "
+                            + page
+            );
+        }
+
+        for (Message message :
+                readPage(page)) {
+
+            if (messageId.equals(
+                    message.id()
+            )) {
+
+                return Optional.of(
+                        message
+                );
             }
         }
 
-        return Optional.empty();
+        /*
+         * The index says the message exists in this page,
+         * but the message could not be found there.
+         *
+         * This indicates archive/index inconsistency.
+         */
+        throw new IllegalStateException(
+                "Message indexed at "
+                        + page
+                        + " but message ID was not found"
+        );
     }
 
     @Override
     public int size() {
 
-        int count = 0;
-
-        for (Path page : discoverPageFiles()) {
-
-            count += readPage(page).size();
-        }
-
-        return count;
+        return messageIndex.size();
     }
 
     private List<Path> discoverPageFiles() {
 
         if (!Files.exists(
-                conversationDirectory)) {
+                conversationDirectory
+        )) {
 
             return List.of();
         }
@@ -157,36 +247,42 @@ public class ArchiveMessageReader
 
             try (var syncDirectories =
                          Files.list(
-                                 conversationDirectory)) {
+                                 conversationDirectory
+                         )) {
 
                 syncDirectories
                         .filter(Files::isDirectory)
-                        .forEach(syncDirectory -> {
+                        .forEach(
+                                syncDirectory -> {
 
-                            try {
+                                    try {
 
-                                try (var files =
-                                             Files.list(
-                                                     syncDirectory)) {
+                                        try (var files =
+                                                     Files.list(
+                                                             syncDirectory
+                                                     )) {
 
-                                    files
-                                            .filter(
-                                                    this::isPageFile
-                                            )
-                                            .forEach(
-                                                    pages::add
-                                            );
+                                            files
+                                                    .filter(
+                                                            this::isPageFile
+                                                    )
+                                                    .forEach(
+                                                            pages::add
+                                                    );
+                                        }
+
+                                    } catch (
+                                            IOException e
+                                    ) {
+
+                                        throw new RuntimeException(
+                                                "Failed to read sync directory: "
+                                                        + syncDirectory,
+                                                e
+                                        );
+                                    }
                                 }
-
-                            } catch (IOException e) {
-
-                                throw new RuntimeException(
-                                        "Failed to read sync directory: "
-                                                + syncDirectory,
-                                        e
-                                );
-                            }
-                        });
+                        );
             }
 
             pages.sort(
@@ -225,17 +321,22 @@ public class ArchiveMessageReader
                 pageCache.get(page);
 
         if (cached != null) {
+
             return cached;
         }
 
         try {
 
             String rawJson =
-                    Files.readString(page);
+                    Files.readString(
+                            page
+                    );
 
-            InstagramResponseParser.ParsedResponse
-                    parsed =
-                    parser.parse(rawJson);
+            InstagramResponseParser
+                    .ParsedResponse parsed =
+                    parser.parse(
+                            rawJson
+                    );
 
             List<Message> messages =
                     parsed.messages()
@@ -250,7 +351,10 @@ public class ArchiveMessageReader
                             )
                             .toList();
 
-            cachePage(page, messages);
+            cachePage(
+                    page,
+                    messages
+            );
 
             return messages;
 
@@ -276,7 +380,9 @@ public class ArchiveMessageReader
                             .iterator()
                             .next();
 
-            pageCache.remove(oldest);
+            pageCache.remove(
+                    oldest
+            );
         }
 
         pageCache.put(

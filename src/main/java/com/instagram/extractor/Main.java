@@ -118,11 +118,12 @@ public class Main {
                             objectMapper
                     );
 
-            MessageIndex messageIndex =
-                    new JsonMessageIndex(
-                            store.getConversationDirectory(),
-                            objectMapper
-                    );
+                    MessageIndex messageIndex =
+        new JsonMessageIndex(
+                store.getConversationDirectory(),
+                objectMapper,
+                parser
+        );
 
             StateStore stateStore =
                     new StateStore(

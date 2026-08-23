@@ -18,7 +18,12 @@
     </properties>
 
     <dependencies>
-
+<dependency>
+    <groupId>org.junit.jupiter</groupId>
+    <artifactId>junit-jupiter</artifactId>
+    <version>5.13.4</version>
+   
+</dependency>
         <!-- JSON -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

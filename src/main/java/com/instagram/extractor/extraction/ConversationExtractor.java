@@ -6,6 +6,7 @@ import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.ExtractionManifest;
 import com.instagram.extractor.storage.ExtractionState;
 import com.instagram.extractor.storage.MessageIndex;
+import com.instagram.extractor.storage.MessageLocation;
 import com.instagram.extractor.storage.RawResponseStore;
 import com.instagram.extractor.storage.StateStore;
 
@@ -125,10 +126,31 @@ public class ConversationExtractor {
              * The index contains only message IDs, not the
              * complete message payloads.
              */
-            for (String messageId : parsed.messageIds()) {
+           String syncId =
+        savedFile
+                .getParent()
+                .getFileName()
+                .toString();
 
-                messageIndex.add(messageId);
-            }
+String pageFileName =
+        savedFile
+                .getFileName()
+                .toString();
+
+MessageLocation location =
+        new MessageLocation(
+                syncId,
+                pageFileName
+        );
+
+for (String messageId :
+        parsed.messageIds()) {
+
+    messageIndex.add(
+            messageId,
+            location
+    );
+}
 
             /*
              * Persist the index after every successfully processed
