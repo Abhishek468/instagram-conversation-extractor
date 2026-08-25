@@ -10,7 +10,7 @@ public record Message(
         Participant sender,
         String content,
         List<Reaction> reactions,
-        String sharedLink,
+        SharedContent sharedContent,
         List<Attachment> attachments,
         JsonNode rawData
 ) {
@@ -27,10 +27,6 @@ public record Message(
                         : List.copyOf(attachments);
     }
 
-    /**
-     * Backward-compatible constructor for the
-     * existing live/archive code.
-     */
     public Message(
             String id,
             long timestampMs,
