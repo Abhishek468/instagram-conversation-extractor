@@ -9,7 +9,8 @@ public record Message(
         long timestampMs,
         Participant sender,
         String content,
-        List<String> reactions,
+        List<Reaction> reactions,
+        String sharedLink,
         List<Attachment> attachments,
         JsonNode rawData
 ) {
@@ -27,8 +28,8 @@ public record Message(
     }
 
     /**
-     * Backward-compatible constructor for the existing
-     * live Instagram extraction path.
+     * Backward-compatible constructor for the
+     * existing live/archive code.
      */
     public Message(
             String id,
@@ -41,6 +42,7 @@ public record Message(
                 null,
                 null,
                 List.of(),
+                null,
                 List.of(),
                 rawData
         );
