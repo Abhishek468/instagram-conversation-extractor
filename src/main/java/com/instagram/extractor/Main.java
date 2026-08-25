@@ -8,7 +8,9 @@ import com.instagram.extractor.extraction.SyncEngine;
 import com.instagram.extractor.instagram.GraphQLRequestBuilder;
 import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
+import com.instagram.extractor.storage.JsonMessageCatalog;
 import com.instagram.extractor.storage.JsonMessageIndex;
+import com.instagram.extractor.storage.MessageCatalog;
 import com.instagram.extractor.storage.MessageIndex;
 import com.instagram.extractor.storage.RawResponseStore;
 import com.instagram.extractor.storage.StateStore;
@@ -125,6 +127,12 @@ public class Main {
                 parser
         );
 
+            MessageCatalog messageCatalog =
+                    new JsonMessageCatalog(
+                            store.getConversationDirectory(),
+                            objectMapper
+                    );
+
             StateStore stateStore =
                     new StateStore(
                             store.getConversationDirectory(),
@@ -167,7 +175,8 @@ public class Main {
                                 parser,
                                 store,
                                 stateStore,
-                                messageIndex
+                                messageIndex,
+                                messageCatalog
                         );
 
                 extractor.extract();

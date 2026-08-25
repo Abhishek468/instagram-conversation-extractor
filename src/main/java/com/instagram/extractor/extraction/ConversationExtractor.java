@@ -5,6 +5,7 @@ import com.instagram.extractor.instagram.InstagramClient;
 import com.instagram.extractor.instagram.InstagramResponseParser;
 import com.instagram.extractor.storage.ExtractionManifest;
 import com.instagram.extractor.storage.ExtractionState;
+import com.instagram.extractor.storage.MessageCatalog;
 import com.instagram.extractor.storage.MessageIndex;
 import com.instagram.extractor.storage.MessageLocation;
 import com.instagram.extractor.storage.RawResponseStore;
@@ -22,6 +23,7 @@ public class ConversationExtractor {
     private final RawResponseStore store;
     private final StateStore stateStore;
     private final MessageIndex messageIndex;
+    private final MessageCatalog messageCatalog;
 
     public ConversationExtractor(
             InstagramConfig config,
@@ -29,7 +31,8 @@ public class ConversationExtractor {
             InstagramResponseParser parser,
             RawResponseStore store,
             StateStore stateStore,
-            MessageIndex messageIndex) {
+            MessageIndex messageIndex,
+            MessageCatalog messageCatalog) {
 
         this.config = config;
         this.client = client;
@@ -37,6 +40,7 @@ public class ConversationExtractor {
         this.store = store;
         this.stateStore = stateStore;
         this.messageIndex = messageIndex;
+        this.messageCatalog = messageCatalog;
     }
 
     public void extract() throws Exception {
@@ -161,6 +165,15 @@ for (String messageId :
              * the failure.
              */
             messageIndex.save();
+            for (InstagramResponseParser.ParsedMessage message
+        : parsed.messages()) {
+
+    messageCatalog.add(
+            message.id(),
+            message.timestampMs()
+    );
+}
+ messageCatalog.save();
 
             if (!parsed.messageIds().isEmpty()) {
 
